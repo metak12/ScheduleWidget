@@ -7,7 +7,11 @@ import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.widget.RemoteViews;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.time.DayOfWeek;
 import java.time.Duration;
@@ -15,6 +19,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,12 +29,14 @@ import java.util.Map;
 public class ScheduleWidget extends AppWidgetProvider {
 
     public static final String ACTION_AUTO_UPDATE = "com.dmitry.schedulewidget.ACTION_AUTO_UPDATE";
+    private static final String PREFS_NAME = "SchedulePrefs";
+    private static final String KEY_CUSTOM_SCHEDULE = "custom_schedule_v1";
 
     public static class Lesson {
-        public final int number;
-        public final String name;
-        public final LocalTime start;
-        public final LocalTime end;
+        public int number;
+        public String name;
+        public LocalTime start;
+        public LocalTime end;
 
         public Lesson(int number, String name, String startStr, String endStr) {
             this.number = number;
@@ -38,18 +45,24 @@ public class ScheduleWidget extends AppWidgetProvider {
             this.end = LocalTime.parse(endStr);
         }
 
+        public String startStr() {
+            return String.format("%02d:%02d", start.getHour(), start.getMinute());
+        }
+
+        public String endStr() {
+            return String.format("%02d:%02d", end.getHour(), end.getMinute());
+        }
+
         public String timeRange() {
-            return String.format("%02d:%02d–%02d:%02d",
-                    start.getHour(), start.getMinute(),
-                    end.getHour(), end.getMinute());
+            return startStr() + "–" + endStr();
         }
     }
 
-    public static final Map<DayOfWeek, List<Lesson>> SCHEDULE = new HashMap<>();
+    public static Map<DayOfWeek, List<Lesson>> getDefaultSchedule() {
+        Map<DayOfWeek, List<Lesson>> map = new HashMap<>();
 
-    static {
         // Понедельник
-        SCHEDULE.put(DayOfWeek.MONDAY, Arrays.asList(
+        map.put(DayOfWeek.MONDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Разговоры о важном", "08:00", "08:30"),
                 new Lesson(2, "География", "08:35", "09:15"),
                 new Lesson(3, "Обществознание", "09:30", "10:10"),
@@ -57,20 +70,20 @@ public class ScheduleWidget extends AppWidgetProvider {
                 new Lesson(5, "Химия", "11:15", "11:55"),
                 new Lesson(6, "Физика", "12:10", "12:50"),
                 new Lesson(7, "Литература", "13:05", "13:45")
-        ));
+        )));
 
         // Вторник (ко 2-му уроку к 08:55)
-        SCHEDULE.put(DayOfWeek.TUESDAY, Arrays.asList(
+        map.put(DayOfWeek.TUESDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(2, "Труд (технология)", "08:55", "09:35"),
                 new Lesson(3, "Алгебра", "09:50", "10:30"),
                 new Lesson(4, "Русский язык", "10:50", "11:30"),
                 new Lesson(5, "Химия", "11:45", "12:25"),
                 new Lesson(6, "Англ. яз.", "12:45", "13:25"),
                 new Lesson(7, "Русский язык", "13:35", "14:15")
-        ));
+        )));
 
         // Среда
-        SCHEDULE.put(DayOfWeek.WEDNESDAY, Arrays.asList(
+        map.put(DayOfWeek.WEDNESDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Физкультура", "08:00", "08:40"),
                 new Lesson(2, "Биология", "08:55", "09:35"),
                 new Lesson(3, "Алгебра", "09:50", "10:30"),
@@ -78,20 +91,20 @@ public class ScheduleWidget extends AppWidgetProvider {
                 new Lesson(5, "Англ. яз.", "11:45", "12:25"),
                 new Lesson(6, "Физика", "12:45", "13:25"),
                 new Lesson(7, "Алгебра", "13:35", "14:15")
-        ));
+        )));
 
         // Четверг
-        SCHEDULE.put(DayOfWeek.THURSDAY, Arrays.asList(
+        map.put(DayOfWeek.THURSDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Физкультура", "08:00", "08:40"),
                 new Lesson(2, "Литература", "08:55", "09:35"),
                 new Lesson(3, "Алгебра", "09:50", "10:30"),
                 new Lesson(4, "Физика", "10:50", "11:30"),
                 new Lesson(5, "Геометрия", "11:45", "12:25"),
                 new Lesson(6, "Англ. яз.", "12:45", "13:25")
-        ));
+        )));
 
         // Пятница
-        SCHEDULE.put(DayOfWeek.FRIDAY, Arrays.asList(
+        map.put(DayOfWeek.FRIDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Геометрия", "08:00", "08:40"),
                 new Lesson(2, "Литература", "08:55", "09:35"),
                 new Lesson(3, "География", "09:50", "10:30"),
@@ -99,7 +112,78 @@ public class ScheduleWidget extends AppWidgetProvider {
                 new Lesson(5, "Русский язык", "11:45", "12:25"),
                 new Lesson(6, "Вер и стат", "12:45", "13:25"),
                 new Lesson(7, "ОБЗР", "13:35", "14:15")
-        ));
+        )));
+
+        return map;
+    }
+
+    public static Map<DayOfWeek, List<Lesson>> loadSchedule(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        String jsonStr = prefs.getString(KEY_CUSTOM_SCHEDULE, null);
+        if (jsonStr == null) {
+            return getDefaultSchedule();
+        }
+        try {
+            Map<DayOfWeek, List<Lesson>> map = new HashMap<>();
+            JSONObject root = new JSONObject(jsonStr);
+            for (DayOfWeek day : DayOfWeek.values()) {
+                if (root.has(day.name())) {
+                    JSONArray arr = root.getJSONArray(day.name());
+                    List<Lesson> list = new ArrayList<>();
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject obj = arr.getJSONObject(i);
+                        list.add(new Lesson(
+                                obj.getInt("number"),
+                                obj.getString("name"),
+                                obj.getString("start"),
+                                obj.getString("end")
+                        ));
+                    }
+                    map.put(day, list);
+                }
+            }
+            return map;
+        } catch (Exception e) {
+            return getDefaultSchedule();
+        }
+    }
+
+    public static void saveSchedule(Context context, Map<DayOfWeek, List<Lesson>> schedule) {
+        try {
+            JSONObject root = new JSONObject();
+            for (Map.Entry<DayOfWeek, List<Lesson>> entry : schedule.entrySet()) {
+                JSONArray arr = new JSONArray();
+                for (Lesson l : entry.getValue()) {
+                    JSONObject obj = new JSONObject();
+                    obj.put("number", l.number);
+                    obj.put("name", l.name);
+                    obj.put("start", l.startStr());
+                    obj.put("end", l.endStr());
+                    arr.put(obj);
+                }
+                root.put(entry.getKey().name(), arr);
+            }
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_CUSTOM_SCHEDULE, root.toString())
+                    .apply();
+            triggerWidgetUpdate(context);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static void resetSchedule(Context context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .remove(KEY_CUSTOM_SCHEDULE)
+                .apply();
+        triggerWidgetUpdate(context);
+    }
+
+    public static void triggerWidgetUpdate(Context context) {
+        Intent intent = new Intent(context, ScheduleWidget.class);
+        intent.setAction(ACTION_AUTO_UPDATE);
+        context.sendBroadcast(intent);
     }
 
     @Override
@@ -125,16 +209,17 @@ public class ScheduleWidget extends AppWidgetProvider {
 
     private void updateWidget(Context context, AppWidgetManager manager, int widgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_layout);
+        Map<DayOfWeek, List<Lesson>> schedule = loadSchedule(context);
 
         LocalDateTime now = LocalDateTime.now();
         DayOfWeek today = now.getDayOfWeek();
         LocalTime timeNow = now.toLocalTime();
 
-        List<Lesson> todayLessons = SCHEDULE.getOrDefault(today, Collections.emptyList());
+        List<Lesson> todayLessons = schedule.getOrDefault(today, Collections.emptyList());
 
-        String statusText = "";
-        String subjectText = "";
-        String bottomText = "";
+        String statusText = "РАСПИСАНИЕ ПУСТО";
+        String subjectText = "Нет уроков";
+        String bottomText = "Нажми, чтобы настроить";
 
         boolean foundToday = false;
 
@@ -174,7 +259,7 @@ public class ScheduleWidget extends AppWidgetProvider {
         if (!foundToday) {
             for (int offset = 1; offset <= 7; offset++) {
                 DayOfWeek nextDay = today.plus(offset);
-                List<Lesson> nextLessons = SCHEDULE.get(nextDay);
+                List<Lesson> nextLessons = schedule.get(nextDay);
                 if (nextLessons != null && !nextLessons.isEmpty()) {
                     Lesson first = nextLessons.get(0);
                     String dayLabel = offset == 1 ? "ЗАВТРА" : getDayName(nextDay);
@@ -190,7 +275,6 @@ public class ScheduleWidget extends AppWidgetProvider {
         views.setTextViewText(R.id.tv_subject, subjectText);
         views.setTextViewText(R.id.tv_time_and_next, bottomText);
 
-        // По нажатию на виджет открываем полупрозрачное окно с расписанием
         Intent popupIntent = new Intent(context, PopupActivity.class);
         popupIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pendingClick = PendingIntent.getActivity(
