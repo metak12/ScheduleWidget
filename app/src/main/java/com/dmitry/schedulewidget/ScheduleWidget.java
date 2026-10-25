@@ -23,29 +23,29 @@ import java.util.Map;
 
 public class ScheduleWidget extends AppWidgetProvider {
 
-    private static final String ACTION_AUTO_UPDATE = "com.dmitry.schedulewidget.ACTION_AUTO_UPDATE";
+    public static final String ACTION_AUTO_UPDATE = "com.dmitry.schedulewidget.ACTION_AUTO_UPDATE";
 
-    private static class Lesson {
-        final int number;
-        final String name;
-        final LocalTime start;
-        final LocalTime end;
+    public static class Lesson {
+        public final int number;
+        public final String name;
+        public final LocalTime start;
+        public final LocalTime end;
 
-        Lesson(int number, String name, String startStr, String endStr) {
+        public Lesson(int number, String name, String startStr, String endStr) {
             this.number = number;
             this.name = name;
             this.start = LocalTime.parse(startStr);
             this.end = LocalTime.parse(endStr);
         }
 
-        String timeRange() {
+        public String timeRange() {
             return String.format("%02d:%02d–%02d:%02d",
                     start.getHour(), start.getMinute(),
                     end.getHour(), end.getMinute());
         }
     }
 
-    private static final Map<DayOfWeek, List<Lesson>> SCHEDULE = new HashMap<>();
+    public static final Map<DayOfWeek, List<Lesson>> SCHEDULE = new HashMap<>();
 
     static {
         // Понедельник
@@ -113,9 +113,10 @@ public class ScheduleWidget extends AppWidgetProvider {
     @Override
     public void onReceive(Context context, Intent intent) {
         super.onReceive(context, intent);
-        if (ACTION_AUTO_UPDATE.equals(intent.getAction()) ||
-                Intent.ACTION_TIME_CHANGED.equals(intent.getAction()) ||
-                Intent.ACTION_TIMEZONE_CHANGED.equals(intent.getAction())) {
+        String action = intent.getAction();
+        if (ACTION_AUTO_UPDATE.equals(action) ||
+                Intent.ACTION_TIME_CHANGED.equals(action) ||
+                Intent.ACTION_TIMEZONE_CHANGED.equals(action)) {
             AppWidgetManager manager = AppWidgetManager.getInstance(context);
             int[] ids = manager.getAppWidgetIds(new ComponentName(context, ScheduleWidget.class));
             onUpdate(context, manager, ids);
@@ -140,7 +141,6 @@ public class ScheduleWidget extends AppWidgetProvider {
         for (int i = 0; i < todayLessons.size(); i++) {
             Lesson lesson = todayLessons.get(i);
 
-            // Если мы до начала этого урока (перемена или утро)
             if (timeNow.isBefore(lesson.start)) {
                 long minsLeft = Duration.between(timeNow, lesson.start).toMinutes() + 1;
                 if (i == 0) {
@@ -154,7 +154,6 @@ public class ScheduleWidget extends AppWidgetProvider {
                 break;
             }
 
-            // Если урок идет прямо сейчас
             if (!timeNow.isBefore(lesson.start) && timeNow.isBefore(lesson.end)) {
                 long minsLeft = Duration.between(timeNow, lesson.end).toMinutes() + 1;
                 statusText = "СЕЙЧАС (" + lesson.number + " УРОК) • ЕЩЕ " + minsLeft + " МИН";
@@ -172,7 +171,6 @@ public class ScheduleWidget extends AppWidgetProvider {
             }
         }
 
-        // Если на сегодня уроки закончились или сегодня выходной
         if (!foundToday) {
             for (int offset = 1; offset <= 7; offset++) {
                 DayOfWeek nextDay = today.plus(offset);
@@ -192,11 +190,11 @@ public class ScheduleWidget extends AppWidgetProvider {
         views.setTextViewText(R.id.tv_subject, subjectText);
         views.setTextViewText(R.id.tv_time_and_next, bottomText);
 
-        // Обновление по клику на виджет
-        Intent clickIntent = new Intent(context, ScheduleWidget.class);
-        clickIntent.setAction(ACTION_AUTO_UPDATE);
-        PendingIntent pendingClick = PendingIntent.getBroadcast(
-                context, 0, clickIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        // По нажатию на виджет открываем полупрозрачное окно с расписанием
+        Intent popupIntent = new Intent(context, PopupActivity.class);
+        popupIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingClick = PendingIntent.getActivity(
+                context, 0, popupIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root, pendingClick);
 
         manager.updateAppWidget(widgetId, views);
