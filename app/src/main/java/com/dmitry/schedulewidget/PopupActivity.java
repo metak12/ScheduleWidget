@@ -15,7 +15,6 @@ import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
-import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
@@ -40,7 +39,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -126,7 +124,6 @@ public class PopupActivity extends Activity {
         cardLp.gravity = Gravity.CENTER;
         fullScreenRoot.addView(rootCard, cardLp);
 
-        // Шапка: слева кнопка каникул, по центру название и дата, справа карандаш
         FrameLayout headerRow = new FrameLayout(this);
 
         vacBtn = new TextView(this);
@@ -262,7 +259,6 @@ public class PopupActivity extends Activity {
                 .setInterpolator(new OvershootInterpolator(1.15f))
                 .start();
     }
-
     private LocalDate getDateForSelectedDay() {
         LocalDate now = LocalDate.now();
         int diff = DAYS[selectedIndex].getValue() - now.getDayOfWeek().getValue();
@@ -424,7 +420,6 @@ public class PopupActivity extends Activity {
         boolean isToday = (now.getDayOfWeek() == selectedDay);
         LocalTime timeNow = now.toLocalTime();
 
-        // Кнопка распознавания скриншота вверху списка при редактировании
         if (isEditMode) {
             TextView scanBtn = createStyledActionButton(
                     "📷 Загрузить день по скриншоту",
@@ -434,6 +429,18 @@ public class PopupActivity extends Activity {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             scanLp.bottomMargin = dp(8);
             lessonsContainer.addView(scanBtn, scanLp);
+        }
+
+        if (list.isEmpty()) {
+            TextView emptyView = new TextView(this);
+            emptyView.setText(isEditMode
+                    ? "Уроков пока нет.\nЗагрузи скриншот или нажми кнопку ниже 👇"
+                    : "В этот день уроков пока нет.\nНажми на карандаш ✎ вверху справа, чтобы добавить расписание!");
+            emptyView.setTextColor(Color.parseColor("#B0FFFFFF"));
+            emptyView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            emptyView.setGravity(Gravity.CENTER);
+            emptyView.setPadding(dp(16), dp(28), dp(16), dp(28));
+            lessonsContainer.addView(emptyView);
         }
 
         for (int i = 0; i < list.size(); i++) {
@@ -461,7 +468,6 @@ public class PopupActivity extends Activity {
             }
             row.setBackground(rowBg);
 
-            // Кружок с номером урока
             TextView numBadge = new TextView(this);
             numBadge.setText(String.valueOf(lesson.number));
             numBadge.setTextColor(Color.WHITE);
@@ -517,7 +523,7 @@ public class PopupActivity extends Activity {
             lessonsContainer.addView(addBtn, addLp);
 
             TextView resetBtn = new TextView(this);
-            resetBtn.setText("Сбросить всё к исходному расписанию");
+            resetBtn.setText("Очистить всё расписание");
             resetBtn.setTextColor(Color.parseColor("#FFAB91"));
             resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
             resetBtn.setGravity(Gravity.CENTER);
@@ -526,12 +532,11 @@ public class PopupActivity extends Activity {
                 ScheduleWidget.resetSchedule(this);
                 schedule = ScheduleWidget.loadSchedule(this);
                 renderLessons();
-                Toast.makeText(this, "Исходное расписание восстановлено", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Расписание очищено", Toast.LENGTH_SHORT).show();
             });
             lessonsContainer.addView(resetBtn);
         }
     }
-
     private TextView createStyledActionButton(String text, String fillHex, String strokeHex) {
         TextView btn = new TextView(this);
         btn.setText(text);
@@ -548,8 +553,6 @@ public class PopupActivity extends Activity {
         btn.setBackground(bg);
         return btn;
     }
-
-    // ==================== РАСПОЗНАВАНИЕ ПО СКРИНШОТУ ====================
 
     private void pickScreenshotFromGallery() {
         try {
@@ -602,7 +605,6 @@ public class PopupActivity extends Activity {
             }
         }
 
-        // Сортируем все найденные строчки сверху вниз как на экране
         lines.sort(Comparator.comparingInt(a -> a.topY));
 
         Pattern timeRangePattern = Pattern.compile("(\\d{1,2})[:.](\\d{2})\\s*[-–—]\\s*(\\d{1,2})[:.](\\d{2})");
@@ -615,7 +617,6 @@ public class PopupActivity extends Activity {
                 String start = String.format("%02d:%02d", Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)));
                 String end = String.format("%02d:%02d", Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)));
 
-                // Ищем название предмета на строчку выше времени
                 String subject = "Урок";
                 for (int j = i - 1; j >= 0; j--) {
                     String candidate = lines.get(j).text.trim();
@@ -634,7 +635,6 @@ public class PopupActivity extends Activity {
             return;
         }
 
-        // Если первый урок начинается после 08:45 (как во вторник) — нумеруем со 2-го урока
         if (parsedLessons.get(0).start.isAfter(LocalTime.of(8, 45))) {
             for (int k = 0; k < parsedLessons.size(); k++) {
                 parsedLessons.get(k).number = k + 2;
@@ -656,10 +656,9 @@ public class PopupActivity extends Activity {
         return true;
     }
 
-    // Если стандартная модель прочитала русские буквы через похожие английские, аккуратно приводим к известным предметам
     private String fixLatinLookalikes(String raw) {
         String clean = raw.replaceAll("\\s+ДЗ$", "").replaceAll("\\s+H$", "").trim();
-        String mapped = clean
+        return clean
                 .replace('A', 'А').replace('a', 'а')
                 .replace('B', 'В').replace('E', 'Е').replace('e', 'е')
                 .replace('K', 'К').replace('k', 'к')
@@ -669,10 +668,7 @@ public class PopupActivity extends Activity {
                 .replace('C', 'С').replace('c', 'с')
                 .replace('T', 'Т').replace('y', 'у')
                 .replace('X', 'Х').replace('x', 'х');
-        return mapped;
     }
-
-    // ==================== КРАСИВОЕ ОКНО ВВОДА УРОКА ====================
 
     private void showStyledLessonDialog(DayOfWeek day, int index) {
         List<ScheduleWidget.Lesson> list = schedule.computeIfAbsent(day, k -> new ArrayList<>());
@@ -680,8 +676,8 @@ public class PopupActivity extends Activity {
 
         int defNum = isNew ? (list.isEmpty() ? 1 : list.get(list.size() - 1).number + 1) : list.get(index).number;
         String defName = isNew ? "" : list.get(index).name;
-        String defStart = isNew ? "14:25" : list.get(index).startStr();
-        String defEnd = isNew ? "15:05" : list.get(index).endStr();
+        String defStart = isNew ? "08:00" : list.get(index).startStr();
+        String defEnd = isNew ? "08:40" : list.get(index).endStr();
 
         Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -702,7 +698,6 @@ public class PopupActivity extends Activity {
         EditText etName = addStyledField(card, "Название предмета", defName,
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
 
-        // В одной строке: Номер урока, Начало, Конец
         LinearLayout rowInputs = new LinearLayout(this);
         rowInputs.setOrientation(LinearLayout.HORIZONTAL);
         rowInputs.setWeightSum(3f);
@@ -715,7 +710,6 @@ public class PopupActivity extends Activity {
         EditText etStart = addCompactField(rowInputs, "Начало", defStart, InputType.TYPE_CLASS_DATETIME);
         EditText etEnd = addCompactField(rowInputs, "Конец", defEnd, InputType.TYPE_CLASS_DATETIME);
 
-        // Кнопки управления
         LinearLayout btnRow = new LinearLayout(this);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);
         btnRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -781,8 +775,6 @@ public class PopupActivity extends Activity {
         }
         dialog.show();
     }
-        
-    // ==================== ОКНО НАСТРОЙКИ КАНИКУЛ ====================
 
     private void showVacationDialog() {
         LocalDate[] currentVac = ScheduleWidget.loadVacation(this);
@@ -991,6 +983,4 @@ public class PopupActivity extends Activity {
 
     private int dp(int val) {
         return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayMetrics());
-    }
-}
+                TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayM    
