@@ -217,42 +217,65 @@ public class ScheduleWidget extends AppWidgetProvider {
         String bottomText = "Нажми для просмотра";
 
         boolean foundToday = false;
+        LocalTime schoolStartLimit = LocalTime.of(7, 0);
 
-        for (int i = 0; i < todayLessons.size(); i++) {
-            Lesson lesson = todayLessons.get(i);
+        // Проверяем, идут ли сейчас учебные часы (с 07:00 до конца последнего урока)
+        boolean isSchoolActiveHours = false;
+        if (!todayLessons.isEmpty()) {
+            LocalTime lastEnd = todayLessons.get(todayLessons.size() - 1).end;
+            isSchoolActiveHours = !timeNow.isBefore(schoolStartLimit) && timeNow.isBefore(lastEnd);
+        }
 
-            // 1. Если идет перемена или до начала урока (считаем время до начала)
-            if (timeNow.isBefore(lesson.start)) {
-                long minsLeft = Duration.between(timeNow, lesson.start).toMinutes() + 1;
-                if (i == 0) {
-                    statusText = "ДО НАЧАЛА УРОКА • ЧЕРЕЗ " + minsLeft + " МИН";
-                } else {
-                    statusText = "ПЕРЕМЕНА • ДО НАЧАЛА " + minsLeft + " МИН";
+        if (isSchoolActiveHours) {
+            // Включаем таймеры только в учебное время
+            for (int i = 0; i < todayLessons.size(); i++) {
+                Lesson lesson = todayLessons.get(i);
+
+                if (timeNow.isBefore(lesson.start)) {
+                    long minsLeft = Duration.between(timeNow, lesson.start).toMinutes() + 1;
+                    if (i == 0) {
+                        statusText = "ДО НАЧАЛА УРОКА • ЧЕРЕЗ " + minsLeft + " МИН";
+                    } else {
+                        statusText = "ПЕРЕМЕНА • ДО НАЧАЛА " + minsLeft + " МИН";
+                    }
+                    subjectText = lesson.name;
+                    bottomText = lesson.number + " урок • " + lesson.timeRange();
+                    foundToday = true;
+                    break;
                 }
-                subjectText = lesson.name;
-                bottomText = lesson.number + " урок • " + lesson.timeRange();
-                foundToday = true;
-                break;
+
+                if (!timeNow.isBefore(lesson.start) && timeNow.isBefore(lesson.end)) {
+                    long minsLeft = Duration.between(timeNow, lesson.end).toMinutes() + 1;
+                    statusText = "ДО КОНЦА УРОКА • ОСТАЛОСЬ " + minsLeft + " МИН";
+                    subjectText = lesson.name;
+
+                    if (i + 1 < todayLessons.size()) {
+                        Lesson next = todayLessons.get(i + 1);
+                        bottomText = "Далее: " + next.name + " (" + next.timeRange() + ")";
+                    } else {
+                        bottomText = "Последний урок (" + lesson.timeRange() + ")";
+                    }
+                    foundToday = true;
+                    break;
+                }
             }
-
-            // 2. Если урок идет прямо сейчас (считаем время до конца)
-            if (!timeNow.isBefore(lesson.start) && timeNow.isBefore(lesson.end)) {
-                long minsLeft = Duration.between(timeNow, lesson.end).toMinutes() + 1;
-                statusText = "ДО КОНЦА УРОКА • ОСТАЛОСЬ " + minsLeft + " МИН";
-                subjectText = lesson.name;
-
-                if (i + 1 < todayLessons.size()) {
-                    Lesson next = todayLessons.get(i + 1);
-                    bottomText = "Далее: " + next.name + " (" + next.timeRange() + ")";
-                } else {
-                    bottomText = "Последний урок (" + lesson.timeRange() + ")";
+        } else {
+            // Вне учебных часов (рано утром до 7:00 или после уроков) — показываем без минутного таймера
+            if (!todayLessons.isEmpty() && timeNow.isBefore(todayLessons.get(todayLessons.size() - 1).end)) {
+                for (int i = 0; i < todayLessons.size(); i++) {
+                    Lesson lesson = todayLessons.get(i);
+                    if (timeNow.isBefore(lesson.start)) {
+                        statusText = "СЕГОДНЯ • " + lesson.number + " УРОК";
+                        subjectText = lesson.name;
+                        bottomText = lesson.number + " урок • " + lesson.timeRange();
+                        foundToday = true;
+                        break;
+                    }
                 }
-                foundToday = true;
-                break;
             }
         }
 
-        // Если уроки на сегодня закончились или сегодня выходной
+        // Если сегодня уроки закончились или выходной — показываем завтрашний день
         if (!foundToday) {
             for (int offset = 1; offset <= 7; offset++) {
                 DayOfWeek nextDay = today.plus(offset);
@@ -311,5 +334,4 @@ public class ScheduleWidget extends AppWidgetProvider {
             alarmManager.set(AlarmManager.RTC, triggerAtMillis, pendingIntent);
         }
     }
-    }
-            
+}
