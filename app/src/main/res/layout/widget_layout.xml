@@ -6,26 +6,39 @@
     android:background="@drawable/widget_bg"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:paddingHorizontal="20dp"
-    android:paddingVertical="14dp">
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="10dp"
+    android:weightSum="10">
 
     <TextView
         android:id="@+id/tv_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="2.5"
+        android:autoSizeMaxTextSize="14sp"
+        android:autoSizeMinTextSize="8sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
+        android:ellipsize="end"
+        android:gravity="bottom|start"
         android:letterSpacing="0.04"
+        android:maxLines="1"
         android:text="СЛЕДУЮЩИЙ УРОК"
         android:textAllCaps="true"
         android:textColor="#CCFFFFFF"
-        android:textSize="11sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/tv_subject"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="4.5"
+        android:autoSizeMaxTextSize="32sp"
+        android:autoSizeMinTextSize="14sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
         android:ellipsize="end"
+        android:gravity="center_vertical|start"
         android:maxLines="1"
         android:shadowColor="#40000000"
         android:shadowDx="0"
@@ -33,18 +46,21 @@
         android:shadowRadius="4"
         android:text="Алгебра"
         android:textColor="#FFFFFFFF"
-        android:textSize="22sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/tv_time_and_next"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="3"
+        android:autoSizeMaxTextSize="16sp"
+        android:autoSizeMinTextSize="9sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
         android:ellipsize="end"
+        android:gravity="top|start"
         android:maxLines="1"
         android:text="09:50–10:30"
-        android:textColor="#E6FFFFFF"
-        android:textSize="13sp" />
+        android:textColor="#E6FFFFFF" />
 
 </LinearLayout>
