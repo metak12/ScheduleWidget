@@ -61,7 +61,6 @@ public class ScheduleWidget extends AppWidgetProvider {
     public static Map<DayOfWeek, List<Lesson>> getDefaultSchedule() {
         Map<DayOfWeek, List<Lesson>> map = new HashMap<>();
 
-        // Понедельник
         map.put(DayOfWeek.MONDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Разговоры о важном", "08:00", "08:30"),
                 new Lesson(2, "География", "08:35", "09:15"),
@@ -72,7 +71,6 @@ public class ScheduleWidget extends AppWidgetProvider {
                 new Lesson(7, "Литература", "13:05", "13:45")
         )));
 
-        // Вторник (ко 2-му уроку к 08:55)
         map.put(DayOfWeek.TUESDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(2, "Труд (технология)", "08:55", "09:35"),
                 new Lesson(3, "Алгебра", "09:50", "10:30"),
@@ -82,7 +80,6 @@ public class ScheduleWidget extends AppWidgetProvider {
                 new Lesson(7, "Русский язык", "13:35", "14:15")
         )));
 
-        // Среда
         map.put(DayOfWeek.WEDNESDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Физкультура", "08:00", "08:40"),
                 new Lesson(2, "Биология", "08:55", "09:35"),
@@ -93,7 +90,6 @@ public class ScheduleWidget extends AppWidgetProvider {
                 new Lesson(7, "Алгебра", "13:35", "14:15")
         )));
 
-        // Четверг
         map.put(DayOfWeek.THURSDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Физкультура", "08:00", "08:40"),
                 new Lesson(2, "Литература", "08:55", "09:35"),
@@ -103,7 +99,6 @@ public class ScheduleWidget extends AppWidgetProvider {
                 new Lesson(6, "Англ. яз.", "12:45", "13:25")
         )));
 
-        // Пятница
         map.put(DayOfWeek.FRIDAY, new ArrayList<>(Arrays.asList(
                 new Lesson(1, "Геометрия", "08:00", "08:40"),
                 new Lesson(2, "Литература", "08:55", "09:35"),
@@ -219,7 +214,7 @@ public class ScheduleWidget extends AppWidgetProvider {
 
         String statusText = "РАСПИСАНИЕ ПУСТО";
         String subjectText = "Нет уроков";
-        String bottomText = "Нажми, чтобы настроить";
+        String bottomText = "Нажми для просмотра";
 
         boolean foundToday = false;
 
@@ -314,4 +309,4 @@ public class ScheduleWidget extends AppWidgetProvider {
             alarmManager.set(AlarmManager.RTC, triggerAtMillis, pendingIntent);
         }
     }
-}
+    }
