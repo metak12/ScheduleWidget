@@ -15,6 +15,7 @@ import org.json.JSONObject;
 
 import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -31,6 +32,17 @@ public class ScheduleWidget extends AppWidgetProvider {
     public static final String ACTION_AUTO_UPDATE = "com.dmitry.schedulewidget.ACTION_AUTO_UPDATE";
     private static final String PREFS_NAME = "SchedulePrefs";
     private static final String KEY_CUSTOM_SCHEDULE = "custom_schedule_v1";
+    private static final String KEY_VACATION_START = "vacation_start";
+    private static final String KEY_VACATION_END = "vacation_end";
+
+    private static final String[] MONTHS_GEN = {
+            "", "ЯНВ", "ФЕВ", "МАР", "АПР", "МАЯ", "ИЮН",
+            "ИЮЛ", "АВГ", "СЕН", "ОКТ", "НОЯ", "ДЕК"
+    };
+
+    private static final String[] DAY_SHORT = {
+            "", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"
+    };
 
     public static class Lesson {
         public int number;
@@ -55,6 +67,35 @@ public class ScheduleWidget extends AppWidgetProvider {
 
         public String timeRange() {
             return startStr() + "–" + endStr();
+        }
+    }
+
+    public static String formatDateShort(LocalDate date) {
+        return DAY_SHORT[date.getDayOfWeek().getValue()] + ", " +
+                date.getDayOfMonth() + " " + MONTHS_GEN[date.getMonthValue()];
+    }
+
+    public static void saveVacation(Context context, LocalDate start, LocalDate end) {
+        SharedPreferences.Editor ed = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit();
+        if (start == null || end == null) {
+            ed.remove(KEY_VACATION_START).remove(KEY_VACATION_END);
+        } else {
+            ed.putString(KEY_VACATION_START, start.toString());
+            ed.putString(KEY_VACATION_END, end.toString());
+        }
+        ed.apply();
+        triggerWidgetUpdate(context);
+    }
+
+    public static LocalDate[] loadVacation(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        String s = prefs.getString(KEY_VACATION_START, null);
+        String e = prefs.getString(KEY_VACATION_END, null);
+        if (s == null || e == null) return null;
+        try {
+            return new LocalDate[]{LocalDate.parse(s), LocalDate.parse(e)};
+        } catch (Exception ex) {
+            return null;
         }
     }
 
@@ -207,19 +248,33 @@ public class ScheduleWidget extends AppWidgetProvider {
         Map<DayOfWeek, List<Lesson>> schedule = loadSchedule(context);
 
         LocalDateTime now = LocalDateTime.now();
+        LocalDate dateNow = now.toLocalDate();
         DayOfWeek today = now.getDayOfWeek();
         LocalTime timeNow = now.toLocalTime();
 
+        String dateBadge = formatDateShort(dateNow);
+
+        // Проверяем, не идут ли сейчас каникулы
+        LocalDate[] vac = loadVacation(context);
+        if (vac != null && !dateNow.isBefore(vac[0]) && !dateNow.isAfter(vac[1])) {
+            long daysLeft = Duration.between(dateNow.atStartOfDay(), vac[1].plusDays(1).atStartOfDay()).toDays();
+            views.setTextViewText(R.id.tv_status, dateBadge + " • КАНИКУЛЫ 🏖️");
+            views.setTextViewText(R.id.tv_subject, "Отдыхаем!");
+            views.setTextViewText(R.id.tv_time_and_next,
+                    "До " + vac[1].getDayOfMonth() + " " + MONTHS_GEN[vac[1].getMonthValue()] + " (осталось дн: " + daysLeft + ")");
+            bindClick(context, manager, widgetId, views);
+            return;
+        }
+
         List<Lesson> todayLessons = schedule.getOrDefault(today, Collections.emptyList());
 
-        String statusText = "РАСПИСАНИЕ ПУСТО";
+        String statusText = dateBadge + " • ПУСТО";
         String subjectText = "Нет уроков";
-        String bottomText = "Нажми для просмотра";
+        String bottomText = "Нажми для настройки";
 
         boolean foundToday = false;
         LocalTime schoolStartLimit = LocalTime.of(7, 0);
 
-        // Проверяем, идут ли сейчас учебные часы (с 07:00 до конца последнего урока)
         boolean isSchoolActiveHours = false;
         if (!todayLessons.isEmpty()) {
             LocalTime lastEnd = todayLessons.get(todayLessons.size() - 1).end;
@@ -227,14 +282,13 @@ public class ScheduleWidget extends AppWidgetProvider {
         }
 
         if (isSchoolActiveHours) {
-            // Включаем таймеры только в учебное время
             for (int i = 0; i < todayLessons.size(); i++) {
                 Lesson lesson = todayLessons.get(i);
 
                 if (timeNow.isBefore(lesson.start)) {
                     long minsLeft = Duration.between(timeNow, lesson.start).toMinutes() + 1;
                     if (i == 0) {
-                        statusText = "ДО НАЧАЛА УРОКА • ЧЕРЕЗ " + minsLeft + " МИН";
+                        statusText = dateBadge + " • ДО НАЧАЛА " + minsLeft + " МИН";
                     } else {
                         statusText = "ПЕРЕМЕНА • ДО НАЧАЛА " + minsLeft + " МИН";
                     }
@@ -246,7 +300,7 @@ public class ScheduleWidget extends AppWidgetProvider {
 
                 if (!timeNow.isBefore(lesson.start) && timeNow.isBefore(lesson.end)) {
                     long minsLeft = Duration.between(timeNow, lesson.end).toMinutes() + 1;
-                    statusText = "ДО КОНЦА УРОКА • ОСТАЛОСЬ " + minsLeft + " МИН";
+                    statusText = "ДО КОНЦА УРОКА • " + minsLeft + " МИН";
                     subjectText = lesson.name;
 
                     if (i + 1 < todayLessons.size()) {
@@ -260,12 +314,11 @@ public class ScheduleWidget extends AppWidgetProvider {
                 }
             }
         } else {
-            // Вне учебных часов (рано утром до 7:00 или после уроков) — показываем без минутного таймера
             if (!todayLessons.isEmpty() && timeNow.isBefore(todayLessons.get(todayLessons.size() - 1).end)) {
                 for (int i = 0; i < todayLessons.size(); i++) {
                     Lesson lesson = todayLessons.get(i);
                     if (timeNow.isBefore(lesson.start)) {
-                        statusText = "СЕГОДНЯ • " + lesson.number + " УРОК";
+                        statusText = dateBadge + " • " + lesson.number + " УРОК";
                         subjectText = lesson.name;
                         bottomText = lesson.number + " урок • " + lesson.timeRange();
                         foundToday = true;
@@ -275,14 +328,18 @@ public class ScheduleWidget extends AppWidgetProvider {
             }
         }
 
-        // Если сегодня уроки закончились или выходной — показываем завтрашний день
         if (!foundToday) {
-            for (int offset = 1; offset <= 7; offset++) {
-                DayOfWeek nextDay = today.plus(offset);
+            for (int offset = 1; offset <= 14; offset++) {
+                LocalDate nextDate = dateNow.plusDays(offset);
+                if (vac != null && !nextDate.isBefore(vac[0]) && !nextDate.isAfter(vac[1])) {
+                    continue; // Пропускаем каникулярные дни при поиске следующего учебного дня
+                }
+                DayOfWeek nextDay = nextDate.getDayOfWeek();
                 List<Lesson> nextLessons = schedule.get(nextDay);
                 if (nextLessons != null && !nextLessons.isEmpty()) {
                     Lesson first = nextLessons.get(0);
-                    String dayLabel = offset == 1 ? "ЗАВТРА" : getDayName(nextDay);
+                    String dayLabel = offset == 1 ? "ЗАВТРА (" + nextDate.getDayOfMonth() + " " + MONTHS_GEN[nextDate.getMonthValue()] + ")"
+                            : formatDateShort(nextDate);
                     statusText = dayLabel + " • К " + first.number + "-МУ УРОКУ";
                     subjectText = first.name;
                     bottomText = "Начало в " + first.timeRange();
@@ -295,24 +352,16 @@ public class ScheduleWidget extends AppWidgetProvider {
         views.setTextViewText(R.id.tv_subject, subjectText);
         views.setTextViewText(R.id.tv_time_and_next, bottomText);
 
+        bindClick(context, manager, widgetId, views);
+    }
+
+    private void bindClick(Context context, AppWidgetManager manager, int widgetId, RemoteViews views) {
         Intent popupIntent = new Intent(context, PopupActivity.class);
         popupIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pendingClick = PendingIntent.getActivity(
                 context, 0, popupIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root, pendingClick);
-
         manager.updateAppWidget(widgetId, views);
-    }
-
-    private String getDayName(DayOfWeek day) {
-        switch (day) {
-            case MONDAY: return "В ПОНЕДЕЛЬНИК";
-            case TUESDAY: return "ВО ВТОРНИК";
-            case WEDNESDAY: return "В СРЕДУ";
-            case THURSDAY: return "В ЧЕТВЕРГ";
-            case FRIDAY: return "В ПЯТНИЦУ";
-            default: return "";
-        }
     }
 
     private void scheduleNextUpdate(Context context) {
