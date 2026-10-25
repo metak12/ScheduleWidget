@@ -1,4 +1,4 @@
-name: Build APK
+name: Build and Release
 
 on:
   push:
@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Требуется для автоматического создания релиза
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -18,17 +21,37 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Generate Release Keystore
+        run: |
+          if [ ! -f app/release-key.jks ]; then
+            keytool -genkeypair -v \
+              -keystore app/release-key.jks \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias schedule_key \
+              -storepass SchedulePassword123 \
+              -keypass SchedulePassword123 \
+              -dname "CN=Developer, OU=Mobile, O=ScheduleApp, L=City, S=State, C=RU"
+          fi
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
 
-      - name: Build Debug APK
-        run: gradle assembleDebug
+      - name: Build Release APK
+        run: gradle assembleRelease
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: ScheduleWidget-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-
+          files: app/build/outputs/apk/release/app-release.apk
+          tag_name: release
+          name: "Актуальное расписание (Релиз)"
+          body: "Свежая версия виджета с поддержкой каникул, распознавания скриншотов и редактирования."
+          draft: false
+          prerelease: false
+          make_latest: true
+          allow_updates: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
