@@ -21,7 +21,6 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -99,57 +98,14 @@ public class ScheduleWidget extends AppWidgetProvider {
         }
     }
 
+    // Изначально пустое расписание для релизной версии
     public static Map<DayOfWeek, List<Lesson>> getDefaultSchedule() {
         Map<DayOfWeek, List<Lesson>> map = new HashMap<>();
-
-        map.put(DayOfWeek.MONDAY, new ArrayList<>(Arrays.asList(
-                new Lesson(1, "Разговоры о важном", "08:00", "08:30"),
-                new Lesson(2, "География", "08:35", "09:15"),
-                new Lesson(3, "Обществознание", "09:30", "10:10"),
-                new Lesson(4, "История", "10:20", "11:00"),
-                new Lesson(5, "Химия", "11:15", "11:55"),
-                new Lesson(6, "Физика", "12:10", "12:50"),
-                new Lesson(7, "Литература", "13:05", "13:45")
-        )));
-
-        map.put(DayOfWeek.TUESDAY, new ArrayList<>(Arrays.asList(
-                new Lesson(2, "Труд (технология)", "08:55", "09:35"),
-                new Lesson(3, "Алгебра", "09:50", "10:30"),
-                new Lesson(4, "Русский язык", "10:50", "11:30"),
-                new Lesson(5, "Химия", "11:45", "12:25"),
-                new Lesson(6, "Англ. яз.", "12:45", "13:25"),
-                new Lesson(7, "Русский язык", "13:35", "14:15")
-        )));
-
-        map.put(DayOfWeek.WEDNESDAY, new ArrayList<>(Arrays.asList(
-                new Lesson(1, "Физкультура", "08:00", "08:40"),
-                new Lesson(2, "Биология", "08:55", "09:35"),
-                new Lesson(3, "Алгебра", "09:50", "10:30"),
-                new Lesson(4, "История", "10:50", "11:30"),
-                new Lesson(5, "Англ. яз.", "11:45", "12:25"),
-                new Lesson(6, "Физика", "12:45", "13:25"),
-                new Lesson(7, "Алгебра", "13:35", "14:15")
-        )));
-
-        map.put(DayOfWeek.THURSDAY, new ArrayList<>(Arrays.asList(
-                new Lesson(1, "Физкультура", "08:00", "08:40"),
-                new Lesson(2, "Литература", "08:55", "09:35"),
-                new Lesson(3, "Алгебра", "09:50", "10:30"),
-                new Lesson(4, "Физика", "10:50", "11:30"),
-                new Lesson(5, "Геометрия", "11:45", "12:25"),
-                new Lesson(6, "Англ. яз.", "12:45", "13:25")
-        )));
-
-        map.put(DayOfWeek.FRIDAY, new ArrayList<>(Arrays.asList(
-                new Lesson(1, "Геометрия", "08:00", "08:40"),
-                new Lesson(2, "Литература", "08:55", "09:35"),
-                new Lesson(3, "География", "09:50", "10:30"),
-                new Lesson(4, "Биология", "10:50", "11:30"),
-                new Lesson(5, "Русский язык", "11:45", "12:25"),
-                new Lesson(6, "Вер и стат", "12:45", "13:25"),
-                new Lesson(7, "ОБЗР", "13:35", "14:15")
-        )));
-
+        map.put(DayOfWeek.MONDAY, new ArrayList<>());
+        map.put(DayOfWeek.TUESDAY, new ArrayList<>());
+        map.put(DayOfWeek.WEDNESDAY, new ArrayList<>());
+        map.put(DayOfWeek.THURSDAY, new ArrayList<>());
+        map.put(DayOfWeek.FRIDAY, new ArrayList<>());
         return map;
     }
 
@@ -254,7 +210,6 @@ public class ScheduleWidget extends AppWidgetProvider {
 
         String dateBadge = formatDateShort(dateNow);
 
-        // Проверяем, не идут ли сейчас каникулы
         LocalDate[] vac = loadVacation(context);
         if (vac != null && !dateNow.isBefore(vac[0]) && !dateNow.isAfter(vac[1])) {
             long daysLeft = Duration.between(dateNow.atStartOfDay(), vac[1].plusDays(1).atStartOfDay()).toDays();
@@ -266,11 +221,28 @@ public class ScheduleWidget extends AppWidgetProvider {
             return;
         }
 
+        // Проверяем, заполнено ли вообще расписание хотя бы в один день
+        boolean isCompletelyEmpty = true;
+        for (List<Lesson> dayList : schedule.values()) {
+            if (dayList != null && !dayList.isEmpty()) {
+                isCompletelyEmpty = false;
+                break;
+            }
+        }
+
+        if (isCompletelyEmpty) {
+            views.setTextViewText(R.id.tv_status, dateBadge + " • РАСПИСАНИЕ");
+            views.setTextViewText(R.id.tv_subject, "Добавь уроки");
+            views.setTextViewText(R.id.tv_time_and_next, "Нажми сюда для настройки ✎");
+            bindClick(context, manager, widgetId, views);
+            return;
+        }
+
         List<Lesson> todayLessons = schedule.getOrDefault(today, Collections.emptyList());
 
-        String statusText = dateBadge + " • ПУСТО";
-        String subjectText = "Нет уроков";
-        String bottomText = "Нажми для настройки";
+        String statusText = dateBadge + " • ВЫХОДНОЙ";
+        String subjectText = "Уроков нет";
+        String bottomText = "Отдыхаем";
 
         boolean foundToday = false;
         LocalTime schoolStartLimit = LocalTime.of(7, 0);
@@ -332,7 +304,7 @@ public class ScheduleWidget extends AppWidgetProvider {
             for (int offset = 1; offset <= 14; offset++) {
                 LocalDate nextDate = dateNow.plusDays(offset);
                 if (vac != null && !nextDate.isBefore(vac[0]) && !nextDate.isAfter(vac[1])) {
-                    continue; // Пропускаем каникулярные дни при поиске следующего учебного дня
+                    continue;
                 }
                 DayOfWeek nextDay = nextDate.getDayOfWeek();
                 List<Lesson> nextLessons = schedule.get(nextDay);
