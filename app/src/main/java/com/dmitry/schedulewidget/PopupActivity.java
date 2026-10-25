@@ -486,4 +486,66 @@ public class PopupActivity extends Activity {
                     return;
                 }
 
-                ScheduleWidget.L
+                ScheduleWidget.Lesson updated = new ScheduleWidget.Lesson(num, name, start, end);
+                if (isNew) {
+                    list.add(updated);
+                } else {
+                    list.set(index, updated);
+                }
+
+                list.sort(Comparator.comparing(l -> l.start));
+                ScheduleWidget.saveSchedule(this, schedule);
+                renderLessons();
+            } catch (Exception e) {
+                Toast.makeText(this, "Проверь формат времени (например, 08:55)", Toast.LENGTH_LONG).show();
+            }
+        });
+
+        builder.setNegativeButton("Отмена", null);
+
+        if (!isNew) {
+            builder.setNeutralButton("Удалить", (dialog, which) -> {
+                list.remove(index);
+                ScheduleWidget.saveSchedule(this, schedule);
+                renderLessons();
+            });
+        }
+
+        builder.show();
+    }
+
+    private EditText createInput(LinearLayout parent, String labelText, String value, int inputType) {
+        TextView label = new TextView(this);
+        label.setText(labelText);
+        label.setTextColor(Color.parseColor("#B0FFFFFF"));
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        labelLp.topMargin = dp(8);
+        parent.addView(label, labelLp);
+
+        EditText et = new EditText(this);
+        et.setText(value);
+        et.setTextColor(Color.WHITE);
+        et.setInputType(inputType);
+        et.setSingleLine(true);
+        parent.addView(et);
+        return et;
+    }
+
+    private String normalizeTime(String raw) {
+        String clean = raw.replace('.', ':').replace('-', ':').replace(' ', ':');
+        String[] parts = clean.split(":");
+        if (parts.length == 2) {
+            int h = Integer.parseInt(parts[0]);
+            int m = Integer.parseInt(parts[1]);
+            return String.format("%02d:%02d", h, m);
+        }
+        return raw;
+    }
+
+    private int dp(int val) {
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayMetrics());
+    }
+}
