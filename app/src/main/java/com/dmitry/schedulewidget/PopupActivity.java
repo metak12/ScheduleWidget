@@ -1,39 +1,51 @@
 package com.dmitry.schedulewidget;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.text.InputType;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 public class PopupActivity extends Activity {
 
     private LinearLayout rootCard;
     private LinearLayout lessonsContainer;
     private LinearLayout tabsContainer;
+    private TextView editBtn;
+    private TextView hintText;
+
+    private Map<DayOfWeek, List<ScheduleWidget.Lesson>> schedule;
     private int selectedIndex = 0;
+    private boolean isEditMode = false;
     private boolean isClosing = false;
 
     private GestureDetector gestureDetector;
@@ -53,17 +65,20 @@ public class PopupActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         overridePendingTransition(0, 0);
 
+        schedule = ScheduleWidget.loadSchedule(this);
+
         // Определяем, какой день открыть сразу
         LocalDateTime now = LocalDateTime.now();
         DayOfWeek today = now.getDayOfWeek();
         LocalTime timeNow = now.toLocalTime();
 
         DayOfWeek targetDay = today;
-        List<ScheduleWidget.Lesson> todayList = ScheduleWidget.SCHEDULE.get(today);
+        List<ScheduleWidget.Lesson> todayList = schedule.get(today);
         if (todayList == null || todayList.isEmpty() || timeNow.isAfter(todayList.get(todayList.size() - 1).end)) {
             for (int i = 1; i <= 7; i++) {
                 DayOfWeek next = today.plus(i);
-                if (ScheduleWidget.SCHEDULE.containsKey(next)) {
+                List<ScheduleWidget.Lesson> nextList = schedule.get(next);
+                if (nextList != null && !nextList.isEmpty()) {
                     targetDay = next;
                     break;
                 }
@@ -79,7 +94,7 @@ public class PopupActivity extends Activity {
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
 
-        // Прозрачный фон на весь экран (ловит нажатия мимо карточки для плавного закрытия)
+        // Прозрачный фон на весь экран
         FrameLayout fullScreenRoot = new FrameLayout(this);
         fullScreenRoot.setBackgroundColor(Color.TRANSPARENT);
         fullScreenRoot.setOnClickListener(v -> closeWithAnimation());
@@ -88,7 +103,7 @@ public class PopupActivity extends Activity {
         rootCard = new LinearLayout(this);
         rootCard.setOrientation(LinearLayout.VERTICAL);
         rootCard.setBackgroundResource(R.drawable.popup_bg);
-        rootCard.setClickable(true); // Чтобы клики внутри карточки не закрывали окно
+        rootCard.setClickable(true);
         int padH = dp(18);
         int padV = dp(16);
         rootCard.setPadding(padH, padV, padH, padV);
@@ -98,14 +113,41 @@ public class PopupActivity extends Activity {
         cardLp.gravity = Gravity.CENTER;
         fullScreenRoot.addView(rootCard, cardLp);
 
-        // Заголовок
+        // Шапка с заголовком и кнопкой карандаша
+        FrameLayout headerRow = new FrameLayout(this);
+
         TextView header = new TextView(this);
         header.setText("Расписание уроков");
         header.setTextColor(Color.WHITE);
         header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         header.setTypeface(null, Typeface.BOLD);
         header.setGravity(Gravity.CENTER);
-        rootCard.addView(header);
+        FrameLayout.LayoutParams titleLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.gravity = Gravity.CENTER;
+        headerRow.addView(header, titleLp);
+
+        // Кнопка карандаша (режим редактирования)
+        editBtn = new TextView(this);
+        editBtn.setText("✎");
+        editBtn.setTextColor(Color.WHITE);
+        editBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        editBtn.setGravity(Gravity.CENTER);
+        updateEditButtonStyle();
+        editBtn.setOnClickListener(v -> {
+            isEditMode = !isEditMode;
+            updateEditButtonStyle();
+            renderLessons();
+            if (isEditMode) {
+                Toast.makeText(this, "Нажми на любой урок, чтобы изменить его", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        FrameLayout.LayoutParams editLp = new FrameLayout.LayoutParams(dp(34), dp(34));
+        editLp.gravity = Gravity.END | Gravity.CENTER_VERTICAL;
+        headerRow.addView(editBtn, editLp);
+
+        rootCard.addView(headerRow);
 
         // Панель выбора дня недели (ПН ВТ СР ЧТ ПТ)
         tabsContainer = new LinearLayout(this);
@@ -124,25 +166,24 @@ public class PopupActivity extends Activity {
         lessonsContainer.setOrientation(LinearLayout.VERTICAL);
         scrollView.addView(lessonsContainer);
 
-        int maxListHeight = (int) (dm.heightPixels * 0.44f);
+        int maxListHeight = (int) (dm.heightPixels * 0.46f);
         LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, maxListHeight);
         rootCard.addView(scrollView, scrollLp);
 
         // Подсказка внизу
-        TextView hint = new TextView(this);
-        hint.setText("Свайпай влево/вправо • Нажми мимо для закрытия");
-        hint.setTextColor(Color.parseColor("#80FFFFFF"));
-        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        hint.setGravity(Gravity.CENTER);
+        hintText = new TextView(this);
+        hintText.setText("Свайпай влево/вправо • ✎ изменить расписание");
+        hintText.setTextColor(Color.parseColor("#80FFFFFF"));
+        hintText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        hintText.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hintLp.topMargin = dp(8);
-        rootCard.addView(hint, hintLp);
+        rootCard.addView(hintText, hintLp);
 
         setContentView(fullScreenRoot);
 
-        // Настраиваем окно на весь экран с мягким затемнением обоев
         Window window = getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
@@ -153,7 +194,7 @@ public class PopupActivity extends Activity {
             window.setAttributes(wlp);
         }
 
-        // Распознавание горизонтальных свайпов для переключения дней
+        // Жесты свайпов влево/вправо
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             private static final int SWIPE_THRESHOLD = 90;
             private static final int SWIPE_VELOCITY_THRESHOLD = 90;
@@ -168,10 +209,8 @@ public class PopupActivity extends Activity {
                         Math.abs(diffX) > SWIPE_THRESHOLD &&
                         Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
                     if (diffX < 0) {
-                        // Свайп влево -> следующий день
                         switchDay((selectedIndex + 1) % DAYS.length, 1);
                     } else {
-                        // Свайп вправо -> предыдущий день
                         switchDay((selectedIndex - 1 + DAYS.length) % DAYS.length, -1);
                     }
                     return true;
@@ -183,7 +222,7 @@ public class PopupActivity extends Activity {
         renderTabs();
         renderLessons();
 
-        // Анимация плавного появления окна (пружинящий зум + прозрачность)
+        // Пружинящая анимация открытия окна
         rootCard.setAlpha(0f);
         rootCard.setScaleX(0.82f);
         rootCard.setScaleY(0.82f);
@@ -196,6 +235,27 @@ public class PopupActivity extends Activity {
                 .setDuration(280)
                 .setInterpolator(new OvershootInterpolator(1.15f))
                 .start();
+    }
+
+    private void updateEditButtonStyle() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(17));
+        if (isEditMode) {
+            editBtn.setText("✓");
+            bg.setColor(Color.parseColor("#554CAF50"));
+            bg.setStroke(dp(1), Color.parseColor("#B081C784"));
+            if (hintText != null) {
+                hintText.setText("Режим правки: нажми на урок для изменения");
+            }
+        } else {
+            editBtn.setText("✎");
+            bg.setColor(Color.parseColor("#25FFFFFF"));
+            bg.setStroke(dp(1), Color.parseColor("#50FFFFFF"));
+            if (hintText != null) {
+                hintText.setText("Свайпай влево/вправо • ✎ изменить расписание");
+            }
+        }
+        editBtn.setBackground(bg);
     }
 
     @Override
@@ -249,6 +309,12 @@ public class PopupActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (isEditMode) {
+            isEditMode = false;
+            updateEditButtonStyle();
+            renderLessons();
+            return;
+        }
         closeWithAnimation();
     }
 
@@ -295,13 +361,15 @@ public class PopupActivity extends Activity {
     private void renderLessons() {
         lessonsContainer.removeAllViews();
         DayOfWeek selectedDay = DAYS[selectedIndex];
-        List<ScheduleWidget.Lesson> list = ScheduleWidget.SCHEDULE.getOrDefault(selectedDay, Collections.emptyList());
+        List<ScheduleWidget.Lesson> list = schedule.computeIfAbsent(selectedDay, k -> new ArrayList<>());
 
         LocalDateTime now = LocalDateTime.now();
         boolean isToday = (now.getDayOfWeek() == selectedDay);
         LocalTime timeNow = now.toLocalTime();
 
-        for (ScheduleWidget.Lesson lesson : list) {
+        for (int i = 0; i < list.size(); i++) {
+            final int lessonIndex = i;
+            ScheduleWidget.Lesson lesson = list.get(i);
             boolean isCurrent = isToday && !timeNow.isBefore(lesson.start) && timeNow.isBefore(lesson.end);
 
             LinearLayout row = new LinearLayout(this);
@@ -313,7 +381,10 @@ public class PopupActivity extends Activity {
 
             GradientDrawable rowBg = new GradientDrawable();
             rowBg.setCornerRadius(dp(16));
-            if (isCurrent) {
+            if (isEditMode) {
+                rowBg.setColor(Color.parseColor("#28FFFFFF"));
+                rowBg.setStroke(dp(1), Color.parseColor("#65FFFFFF"));
+            } else if (isCurrent) {
                 rowBg.setColor(Color.parseColor("#38FFFFFF"));
                 rowBg.setStroke(dp(1), Color.parseColor("#90FFFFFF"));
             } else {
@@ -331,9 +402,9 @@ public class PopupActivity extends Activity {
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             row.addView(title, titleLp);
 
-            // Время звонков
+            // Время звонков (+ значок правки в режиме редактирования)
             TextView time = new TextView(this);
-            time.setText(lesson.timeRange());
+            time.setText(lesson.timeRange() + (isEditMode ? "  ✎" : ""));
             time.setTextColor(isCurrent ? Color.WHITE : Color.parseColor("#CCFFFFFF"));
             time.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             if (isCurrent) {
@@ -341,15 +412,77 @@ public class PopupActivity extends Activity {
             }
             row.addView(time);
 
+            if (isEditMode) {
+                row.setOnClickListener(v -> showEditLessonDialog(selectedDay, lessonIndex));
+            }
+
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             rowLp.bottomMargin = dp(6);
             lessonsContainer.addView(row, rowLp);
         }
+
+        // Дополнительные кнопки в режиме редактирования
+        if (isEditMode) {
+            TextView addBtn = new TextView(this);
+            addBtn.setText("+ Добавить урок");
+            addBtn.setTextColor(Color.WHITE);
+            addBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            addBtn.setTypeface(null, Typeface.BOLD);
+            addBtn.setGravity(Gravity.CENTER);
+            addBtn.setPadding(dp(14), dp(10), dp(14), dp(10));
+
+            GradientDrawable addBg = new GradientDrawable();
+            addBg.setCornerRadius(dp(16));
+            addBg.setColor(Color.parseColor("#354CAF50"));
+            addBg.setStroke(dp(1), Color.parseColor("#8081C784"));
+            addBtn.setBackground(addBg);
+            addBtn.setOnClickListener(v -> showEditLessonDialog(selectedDay, -1));
+
+            LinearLayout.LayoutParams addLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            addLp.topMargin = dp(4);
+            addLp.bottomMargin = dp(6);
+            lessonsContainer.addView(addBtn, addLp);
+
+            TextView resetBtn = new TextView(this);
+            resetBtn.setText("Сбросить всё к исходному расписанию");
+            resetBtn.setTextColor(Color.parseColor("#FFAB91"));
+            resetBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            resetBtn.setGravity(Gravity.CENTER);
+            resetBtn.setPadding(dp(10), dp(8), dp(10), dp(8));
+            resetBtn.setOnClickListener(v -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Сброс расписания")
+                    .setMessage("Вернуть изначальное расписание для всех дней?")
+                    .setPositiveButton("Сбросить", (d, w) -> {
+                        ScheduleWidget.resetSchedule(this);
+                        schedule = ScheduleWidget.loadSchedule(this);
+                        renderLessons();
+                        Toast.makeText(this, "Исходное расписание восстановлено", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("Отмена", null)
+                    .show());
+            lessonsContainer.addView(resetBtn);
+        }
     }
 
-    private int dp(int val) {
-        return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayMetrics());
-    }
-                }
+    private void showEditLessonDialog(DayOfWeek day, int index) {
+        List<ScheduleWidget.Lesson> list = schedule.computeIfAbsent(day, k -> new ArrayList<>());
+        boolean isNew = (index < 0 || index >= list.size());
+
+        int defNum = isNew ? (list.isEmpty() ? 1 : list.get(list.size() - 1).number + 1) : list.get(index).number;
+        String defName = isNew ? "" : list.get(index).name;
+        String defStart = isNew ? "14:25" : list.get(index).startStr();
+        String defEnd = isNew ? "15:05" : list.get(index).endStr();
+
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(12), dp(20), dp(4));
+
+        EditText etNumber = createInput(form, "Номер урока (1–9):", String.valueOf(defNum), InputType.TYPE_CLASS_NUMBER);
+        EditText etName = createInput(form, "Название предмета:", defName, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        EditText etStart = createInput(form, "Время начала (ЧЧ:ММ):", defStart, InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME);
+        EditText etEnd = createInput(form, "Время окончания (ЧЧ:ММ):", defEnd, InputType.TYPE_CLASS_DATETIME | InputType.TYPE_DATETIME_VARIATION_TIME);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+        builder.setTitle(isNew ? "Новый урок" : "Изменить урок
