@@ -4,14 +4,21 @@ plugins {
 
 android {
     namespace 'com.dmitry.schedulewidget'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.dmitry.schedulewidget"
         minSdk 26
-        targetSdk 34
-        versionCode 2
-        versionName "2.0"
+        targetSdk 35
+        versionCode 3
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
     }
 
     compileOptions {
@@ -21,6 +28,5 @@ android {
 }
 
 dependencies {
-    // Распознавание текста (кириллица) на скриншотах
     implementation 'com.google.mlkit:text-recognition:16.0.1'
 }
