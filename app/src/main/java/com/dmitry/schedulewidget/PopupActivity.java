@@ -983,4 +983,6 @@ public class PopupActivity extends Activity {
 
     private int dp(int val) {
         return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayM    
+                TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayMetrics());
+    }
+}    
