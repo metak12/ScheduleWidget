@@ -175,7 +175,7 @@ public class ScheduleWidget extends AppWidgetProvider {
                                 obj.getString("end")
                         ));
                     }
-                    map..put(day, list);
+                    map.put(day, list);
                 }
             }
             return map;
