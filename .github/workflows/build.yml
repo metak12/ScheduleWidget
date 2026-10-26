@@ -1,3 +1,4 @@
+yaml
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -12,4 +13,3 @@
           allow_updates: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
