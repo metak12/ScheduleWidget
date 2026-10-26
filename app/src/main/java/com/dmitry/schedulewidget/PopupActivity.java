@@ -259,6 +259,7 @@ public class PopupActivity extends Activity {
                 .setInterpolator(new OvershootInterpolator(1.15f))
                 .start();
     }
+
     private LocalDate getDateForSelectedDay() {
         LocalDate now = LocalDate.now();
         int diff = DAYS[selectedIndex].getValue() - now.getDayOfWeek().getValue();
@@ -505,7 +506,7 @@ public class PopupActivity extends Activity {
             }
 
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             rowLp.bottomMargin = dp(6);
             lessonsContainer.addView(row, rowLp);
         }
@@ -537,6 +538,7 @@ public class PopupActivity extends Activity {
             lessonsContainer.addView(resetBtn);
         }
     }
+
     private TextView createStyledActionButton(String text, String fillHex, String strokeHex) {
         TextView btn = new TextView(this);
         btn.setText(text);
@@ -576,9 +578,11 @@ public class PopupActivity extends Activity {
     private static class OcrLineItem {
         String text;
         int topY;
-        OcrLineItem(String text, int topY) {
+        int leftX;
+        OcrLineItem(String text, int topY, int leftX) {
             this.text = text;
             this.topY = topY;
+            this.leftX = leftX;
         }
     }
 
@@ -595,17 +599,24 @@ public class PopupActivity extends Activity {
         }
     }
 
+    // Умный OCR парсер: находит все таймкоды и подтягивает к ним ближайшие текстовые названия уроков
     private void parseRecognizedSchedule(Text visionText) {
         List<OcrLineItem> lines = new ArrayList<>();
         for (Text.TextBlock block : visionText.getTextBlocks()) {
             for (Text.Line line : block.getLines()) {
                 if (line.getBoundingBox() != null) {
-                    lines.add(new OcrLineItem(line.getText().trim(), line.getBoundingBox().top));
+                    lines.add(new OcrLineItem(line.getText().trim(), line.getBoundingBox().top, line.getBoundingBox().left));
                 }
             }
         }
 
-        lines.sort(Comparator.comparingInt(a -> a.topY));
+        // Сортируем строки сверху вниз
+        lines.sort((a, b) -> {
+            if (Math.abs(a.topY - b.topY) > 18) {
+                return Integer.compare(a.topY, b.topY);
+            }
+            return Integer.compare(a.leftX, b.leftX);
+        });
 
         Pattern timeRangePattern = Pattern.compile("(\\d{1,2})[:.](\\d{2})\\s*[-–—]\\s*(\\d{1,2})[:.](\\d{2})");
         List<ScheduleWidget.Lesson> parsedLessons = new ArrayList<>();
@@ -617,21 +628,34 @@ public class PopupActivity extends Activity {
                 String start = String.format("%02d:%02d", Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)));
                 String end = String.format("%02d:%02d", Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)));
 
-                String subject = "Урок";
-                for (int j = i - 1; j >= 0; j--) {
-                    String candidate = lines.get(j).text.trim();
-                    if (isValidSubjectLine(candidate)) {
-                        subject = fixLatinLookalikes(candidate);
-                        break;
+                // Пробуем найти название предмета на этой же строке (если таймкод и текст вместе)
+                String cleanLine = item.text.replaceAll("\\d{1,2}[:.](\\d{2})\\s*[-–—]\\s*\\d{1,2}[:.](\\d{2})", "").trim();
+                String subject = "";
+
+                if (isValidSubjectLine(cleanLine)) {
+                    subject = fixLatinLookalikes(cleanLine);
+                } else {
+                    // Ищем название в строках чуть выше таймкода
+                    for (int j = i - 1; j >= 0 && j >= i - 3; j--) {
+                        String cand = lines.get(j).text.trim();
+                        if (isValidSubjectLine(cand)) {
+                            subject = fixLatinLookalikes(cand);
+                            break;
+                        }
                     }
                 }
+
+                if (subject.isEmpty() || subject.length() < 2) {
+                    subject = "Урок " + (parsedLessons.size() + 1);
+                }
+
                 int num = parsedLessons.size() + 1;
                 parsedLessons.add(new ScheduleWidget.Lesson(num, subject, start, end));
             }
         }
 
         if (parsedLessons.isEmpty()) {
-            Toast.makeText(this, "Не найдено время уроков (формат 08:00-08:40)", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Не удалось найти время (формат 08:00-08:40). Попробуй другой скриншот.", Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -645,13 +669,13 @@ public class PopupActivity extends Activity {
         schedule.put(targetDay, parsedLessons);
         ScheduleWidget.saveSchedule(this, schedule);
         renderLessons();
-        Toast.makeText(this, "Распознано уроков: " + parsedLessons.size(), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Успешно распознано: " + parsedLessons.size() + " урок(ов)", Toast.LENGTH_SHORT).show();
     }
 
     private boolean isValidSubjectLine(String s) {
-        if (s.length() < 3) return false;
+        if (s == null || s.length() < 2) return false;
         String lower = s.toLowerCase();
-        if (lower.equals("дз") || lower.equals("расписание") || lower.equals("сегодня")) return false;
+        if (lower.equals("дз") || lower.equals("расписание") || lower.equals("сегодня") || lower.equals("урок")) return false;
         if (lower.matches(".*\\d{1,2}[:.]\\d{2}.*")) return false;
         return true;
     }
@@ -775,7 +799,6 @@ public class PopupActivity extends Activity {
         }
         dialog.show();
     }
-
     private void showVacationDialog() {
         LocalDate[] currentVac = ScheduleWidget.loadVacation(this);
         LocalDate now = LocalDate.now();
@@ -897,7 +920,7 @@ public class PopupActivity extends Activity {
         labelLp.bottomMargin = dp(4);
         parent.addView(label, labelLp);
 
-        EditText et = new EditText(this);
+        EditText et = newEditText(this);
         et.setText(value);
         et.setTextColor(Color.WHITE);
         et.setHintTextColor(Color.parseColor("#60FFFFFF"));
@@ -985,4 +1008,4 @@ public class PopupActivity extends Activity {
         return (int) TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, val, getResources().getDisplayMetrics());
     }
-}    
+}
